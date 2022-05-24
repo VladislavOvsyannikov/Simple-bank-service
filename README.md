@@ -15,7 +15,7 @@ Application is based on Kotlin and Spring Boot, and uses H2 as an in-memory data
 
 ### Build .jar
 ```
-mvn clean install
+mvn clean package
 ```
 
 ### Build Docker image

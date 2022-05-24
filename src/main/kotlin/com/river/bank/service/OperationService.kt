@@ -29,17 +29,17 @@ class OperationService(
         .findBySourceIdOrDestId(accountId, accountId, pageable)
         .map { it.toDto() }
 
-    @Transactional(isolation = Isolation.SERIALIZABLE)
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
     fun deposit(request: DepositRequestDto) {
         val dest = accountService.findByNumber(request.destNumber)
 
         dest.balance += request.amount
         accountService.save(dest)
 
-        logOperation(OperationType.DEPOSIT, request.amount, dest = dest)
+        saveOperation(OperationType.DEPOSIT, request.amount, dest = dest)
     }
 
-    @Transactional(isolation = Isolation.SERIALIZABLE)
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
     fun withdraw(request: WithdrawRequestDto) {
         val source = accountService.findByNumber(request.sourceNumber)
         checkSourceAccount(source, request.amount, request.pinCode)
@@ -47,10 +47,10 @@ class OperationService(
         source.balance -= request.amount
         accountService.save(source)
 
-        logOperation(OperationType.WITHDRAW, request.amount, source = source)
+        saveOperation(OperationType.WITHDRAW, request.amount, source = source)
     }
 
-    @Transactional(isolation = Isolation.SERIALIZABLE)
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
     fun transfer(request: TransferRequestDto) {
         val source = accountService.findByNumber(request.sourceNumber)
         checkSourceAccount(source, request.amount, request.pinCode)
@@ -62,7 +62,7 @@ class OperationService(
         dest.balance += request.amount
         accountService.save(dest)
 
-        logOperation(OperationType.TRANSFER, request.amount, source = source, dest = dest)
+        saveOperation(OperationType.TRANSFER, request.amount, source = source, dest = dest)
     }
 
     private fun checkSourceAccount(source: Account, amount: BigDecimal, pinCode: String) {
@@ -75,7 +75,7 @@ class OperationService(
         }
     }
 
-    private fun logOperation(
+    private fun saveOperation(
         type: OperationType,
         amount: BigDecimal,
         source: Account? = null,
