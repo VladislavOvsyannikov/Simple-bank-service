@@ -12,7 +12,6 @@ import mu.KotlinLogging
 import org.springframework.data.domain.Pageable
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 
@@ -29,7 +28,7 @@ class OperationService(
         .findBySourceIdOrDestId(accountId, accountId, pageable)
         .map { it.toDto() }
 
-    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Transactional
     fun deposit(request: DepositRequestDto) {
         val dest = accountService.findByNumber(request.destNumber)
 
@@ -39,7 +38,7 @@ class OperationService(
         saveOperation(OperationType.DEPOSIT, request.amount, dest = dest)
     }
 
-    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Transactional
     fun withdraw(request: WithdrawRequestDto) {
         val source = accountService.findByNumber(request.sourceNumber)
         checkSourceAccount(source, request.amount, request.pinCode)
@@ -50,11 +49,9 @@ class OperationService(
         saveOperation(OperationType.WITHDRAW, request.amount, source = source)
     }
 
-    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Transactional
     fun transfer(request: TransferRequestDto) {
-        val source = accountService.findByNumber(request.sourceNumber)
-        checkSourceAccount(source, request.amount, request.pinCode)
-        val dest = accountService.findByNumber(request.destNumber)
+        val (source, dest) = getOrderedAccounts(request)
 
         source.balance -= request.amount
         accountService.save(source)
@@ -63,6 +60,30 @@ class OperationService(
         accountService.save(dest)
 
         saveOperation(OperationType.TRANSFER, request.amount, source = source, dest = dest)
+    }
+
+    /**
+     * Return source and dest account and ensure the right order
+     * of accounts locks to avoid deadlocks in cases of reciprocal transfers
+     *
+     * @param request transfer data
+     * @return source and dest accounts respectively
+     */
+    fun getOrderedAccounts(request: TransferRequestDto): Pair<Account, Account> {
+        val source = {
+            accountService.findByNumber(request.sourceNumber)
+                .also { checkSourceAccount(it, request.amount, request.pinCode) }
+        }
+
+        val dest = {
+            accountService.findByNumber(request.destNumber)
+        }
+
+        return if (request.sourceNumber > request.destNumber) {
+            Pair(first = source(), second = dest())
+        } else {
+            Pair(second = dest(), first = source())
+        }
     }
 
     private fun checkSourceAccount(source: Account, amount: BigDecimal, pinCode: String) {
